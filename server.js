@@ -1,28 +1,20 @@
- 
 const express = require('express');
 const cors = require('cors');
 const Anthropic = require('@anthropic-ai/sdk');
-
 const app = express();
 app.use(cors());
-app.use(express.json());
-
+app.use(express.json({ limit: '50mb' }));
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
 const alertHistory = [];
-
 app.get('/', (req, res) => {
   res.json({ status: 'TradeIQ Server Running', time: new Date().toISOString() });
 });
-
 app.get('/history', (req, res) => {
   res.json(alertHistory.slice(-20));
 });
-
 app.post('/alert', async (req, res) => {
   const body = req.body;
   const { ticker='Unknown', action='Unknown', close=null, open=null, high=null, low=null, volume=null, interval=null, time=new Date().toISOString(), rsi=null, ema_fast=null, ema_slow=null, atr=null, vwap=null, custom_message='' } = body;
-
   const marketContext = `Ticker: ${ticker}
 Action/Signal: ${action}
 Timeframe: ${interval || 'Unknown'}
@@ -30,7 +22,6 @@ Time: ${time}
 Close: ${close ?? 'N/A'} | Open: ${open ?? 'N/A'} | High: ${high ?? 'N/A'} | Low: ${low ?? 'N/A'} | Volume: ${volume ?? 'N/A'}
 RSI: ${rsi ?? 'N/A'} | EMA Fast: ${ema_fast ?? 'N/A'} | EMA Slow: ${ema_slow ?? 'N/A'} | ATR: ${atr ?? 'N/A'} | VWAP: ${vwap ?? 'N/A'}
 Notes: ${custom_message || 'None'}`;
-
   try {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
@@ -46,7 +37,6 @@ Always respond with:
 Be direct and fast. No fluff.`,
       messages: [{ role: 'user', content: `Analyze this alert:\n\n${marketContext}` }]
     });
-
     const result = { id: Date.now(), timestamp: new Date().toISOString(), ticker, action, close, interval, analysis: response.content[0].text, raw: body };
     alertHistory.unshift(result);
     if (alertHistory.length > 20) alertHistory.pop();
@@ -55,7 +45,6 @@ Be direct and fast. No fluff.`,
     res.status(500).json({ success: false, error: error.message });
   }
 });
-
 app.post('/analyze', async (req, res) => {
   const { message, context } = req.body;
   if (!message) return res.status(400).json({ error: 'Message required' });
@@ -71,6 +60,35 @@ app.post('/analyze', async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
-
+app.post('/apex-live', async (req, res) => {
+  try {
+    const { image, context } = req.body;
+    if (!image) return res.status(400).json({ error: 'No image' });
+    const parts = [];
+    if (context?.bias) parts.push(`Daily bias: ${context.bias}`);
+    if (context?.session) parts.push(`Session: ${context.session}`);
+    if (context?.instrument) parts.push(`Instrument: ${context.instrument}`);
+    if (context?.timeframe) parts.push(`Timeframe: ${context.timeframe}`);
+    if (context?.notes) parts.push(`Notes: ${context.notes}`);
+    const ctx = parts.length ? '\n\nCONTEXT:\n' + parts.join('\n') : '';
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 800,
+      system: 'You are Apex — an elite ICT trading AI watching a live TopstepX screen. Identify the ICT pattern, read the chart, give GO/WAIT/AVOID with Entry/Stop/TP levels. Be sharp and direct.',
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: image }},
+          { type: 'text', text: 'Read this live trading screen. What do you see and what should I do?' + ctx }
+        ]
+      }]
+    });
+    const analysis = response.content?.[0]?.text || 'Analysis unavailable';
+    res.json({ analysis, timestamp: new Date().toISOString() });
+  } catch (err) {
+    res.status(500).json({ error: err.message, analysis: '❌ Error: ' + err.message });
+  }
+});
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`TradeIQ Server running on port ${PORT}`));
+ 
