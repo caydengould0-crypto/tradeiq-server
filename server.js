@@ -62,7 +62,7 @@ app.post('/analyze', async (req, res) => {
 });
 app.post('/apex-live', async (req, res) => {
   try {
-    const { image, context } = req.body;
+    const { image, context, media_type } = req.body;
     if (!image) return res.status(400).json({ error: 'No image' });
     const parts = [];
     if (context?.bias) parts.push(`Daily bias: ${context.bias}`);
@@ -71,6 +71,7 @@ app.post('/apex-live', async (req, res) => {
     if (context?.timeframe) parts.push(`Timeframe: ${context.timeframe}`);
     if (context?.notes) parts.push(`Notes: ${context.notes}`);
     const ctx = parts.length ? '\n\nCONTEXT:\n' + parts.join('\n') : '';
+    const imgMediaType = media_type || 'image/jpeg';
     const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 800,
@@ -78,7 +79,7 @@ app.post('/apex-live', async (req, res) => {
       messages: [{
         role: 'user',
         content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: image }},
+          { type: 'image', source: { type: 'base64', media_type: imgMediaType, data: image }},
           { type: 'text', text: 'Read this live trading screen. What do you see and what should I do?' + ctx }
         ]
       }]
@@ -86,9 +87,9 @@ app.post('/apex-live', async (req, res) => {
     const analysis = response.content?.[0]?.text || 'Analysis unavailable';
     res.json({ analysis, timestamp: new Date().toISOString() });
   } catch (err) {
+    console.error('Apex live error:', err);
     res.status(500).json({ error: err.message, analysis: '❌ Error: ' + err.message });
   }
 });
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`TradeIQ Server running on port ${PORT}`));
- 
