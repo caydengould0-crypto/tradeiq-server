@@ -74,6 +74,8 @@ app.post('/apex-live', async (req, res) => {
     const imgMediaType = media_type || 'image/jpeg';
     const response = await client.messages.create({
       model: 'claude-sonnet-4-5',
+      max_tokens: 800,
+      system: 'You are Apex — an elite ICT trading AI watching a live TopstepX screen. Identify the ICT pattern, read the chart, give GO/WAIT/AVOID with Entry/Stop/TP levels. Be sharp and direct.',
       messages: [{
         role: 'user',
         content: [
@@ -91,5 +93,4 @@ app.post('/apex-live', async (req, res) => {
 });
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`TradeIQ Server running on port ${PORT}`));
-
-
+ 
