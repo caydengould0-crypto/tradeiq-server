@@ -24,7 +24,7 @@ RSI: ${rsi ?? 'N/A'} | EMA Fast: ${ema_fast ?? 'N/A'} | EMA Slow: ${ema_slow ?? 
 Notes: ${custom_message || 'None'}`;
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-5',
       max_tokens: 1000,
       system: `You are TradeIQ, an expert futures trading analyst for a TopstepX prop trader on a $50,000 funded account.
 Rules: No trades before 10 AM ET. No trades after 3 PM ET. $1,000 daily loss limit. Avoid 12-1 PM dead zone.
@@ -50,7 +50,7 @@ app.post('/analyze', async (req, res) => {
   if (!message) return res.status(400).json({ error: 'Message required' });
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-5',
       max_tokens: 1000,
       system: `You are TradeIQ, an expert futures trading analyst for a TopstepX prop trader. No trades before 10 AM ET, after 3 PM ET, or during 12-1 PM. $1,000 daily loss limit. Be direct and concise.`,
       messages: [...(context || []), { role: 'user', content: message }]
@@ -73,9 +73,7 @@ app.post('/apex-live', async (req, res) => {
     const ctx = parts.length ? '\n\nCONTEXT:\n' + parts.join('\n') : '';
     const imgMediaType = media_type || 'image/jpeg';
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 800,
-      system: 'You are Apex — an elite ICT trading AI watching a live TopstepX screen. Identify the ICT pattern, read the chart, give GO/WAIT/AVOID with Entry/Stop/TP levels. Be sharp and direct.',
+      model: 'claude-sonnet-4-5',
       messages: [{
         role: 'user',
         content: [
