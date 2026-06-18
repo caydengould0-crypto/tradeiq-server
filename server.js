@@ -6,12 +6,30 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const alertHistory = [];
+
+// Signal queue for NinjaTrader polling
+let pendingSignal = null;
+let lastSignalId = 0;
+
 app.get('/', (req, res) => {
   res.json({ status: 'TradeIQ Server Running', time: new Date().toISOString() });
 });
+
 app.get('/history', (req, res) => {
   res.json(alertHistory.slice(-20));
 });
+
+// NinjaTrader polls this endpoint every 3 seconds
+app.get('/signal', (req, res) => {
+  if (pendingSignal) {
+    const signal = pendingSignal;
+    pendingSignal = null; // Clear after sending
+    res.json({ hasSignal: true, signal });
+  } else {
+    res.json({ hasSignal: false });
+  }
+});
+
 app.post('/alert', async (req, res) => {
   const body = req.body;
   const { ticker='Unknown', action='Unknown', close=null, open=null, high=null, low=null, volume=null, interval=null, time=new Date().toISOString(), rsi=null, ema_fast=null, ema_slow=null, atr=null, vwap=null, custom_message='' } = body;
@@ -45,6 +63,7 @@ Be direct and fast. No fluff.`,
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
 app.post('/analyze', async (req, res) => {
   const { message, context } = req.body;
   if (!message) return res.status(400).json({ error: 'Message required' });
@@ -60,6 +79,7 @@ app.post('/analyze', async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
 app.post('/apex-live', async (req, res) => {
   try {
     const { image, context, media_type } = req.body;
@@ -75,7 +95,17 @@ app.post('/apex-live', async (req, res) => {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-5',
       max_tokens: 800,
-      system: 'You are Apex — an elite ICT trading AI watching a live TopstepX screen. Identify the ICT pattern, read the chart, give GO/WAIT/AVOID with Entry/Stop/TP levels. Be sharp and direct.',
+      system: `You are Apex — an elite ICT trading AI watching a live futures screen.
+Analyze the chart using ICT methodology.
+At the end of your analysis, output a JSON signal block exactly like this:
+SIGNAL_JSON:{"SignalType":"LONG","Instrument":"MGC","SlTicks":20}
+or
+SIGNAL_JSON:{"SignalType":"SHORT","Instrument":"MNQ","SlTicks":15}
+or
+SIGNAL_JSON:{"SignalType":"WAIT","Instrument":"NONE","SlTicks":0}
+
+Only output LONG or SHORT if it is a clear A+ ICT setup. Otherwise output WAIT.
+SlTicks should be based on the actual stop distance in ticks from entry to stop loss.`,
       messages: [{
         role: 'user',
         content: [
@@ -84,13 +114,30 @@ app.post('/apex-live', async (req, res) => {
         ]
       }]
     });
+
     const analysis = response.content?.[0]?.text || 'Analysis unavailable';
+
+    // Parse signal from Apex response
+    const signalMatch = analysis.match(/SIGNAL_JSON:(\{.*?\})/);
+    if (signalMatch) {
+      try {
+        const signal = JSON.parse(signalMatch[1]);
+        if (signal.SignalType === 'LONG' || signal.SignalType === 'SHORT') {
+          lastSignalId++;
+          pendingSignal = { ...signal, id: lastSignalId, timestamp: new Date().toISOString() };
+          console.log('New signal queued:', pendingSignal);
+        }
+      } catch (e) {
+        console.log('Signal parse error:', e.message);
+      }
+    }
+
     res.json({ analysis, timestamp: new Date().toISOString() });
   } catch (err) {
     console.error('Apex live error:', err);
     res.status(500).json({ error: err.message, analysis: '❌ Error: ' + err.message });
   }
 });
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`TradeIQ Server running on port ${PORT}`));
- 
